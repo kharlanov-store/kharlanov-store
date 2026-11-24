@@ -616,12 +616,12 @@ let orders = JSON.parse(localStorage.getItem("kharlanov_orders") || "[]");
 /* ---------- КАТЕГОРИИ ---------- */
 const CATEGORIES = [
   { key: "all", label: "Все" },
+  { key: "shoes", label: "Обувь" },
   { key: "outerwear", label: "Верхняя одежда" },
-  { key: "hoodies", label: "Худи/Свитшоты" },
-  { key: "pants", label: "Штаны" },
+  { key: "hoodies", label: "Худи / Зипки / Свитшоты" },
   { key: "tshirts", label: "Футболки" },
-  { key: "accessories", label: "Аксессуары" },
-  { key: "shoes", label: "Обувь" }
+  { key: "pants", label: "Штаны / Шорты" },
+  { key: "accessories", label: "Аксессуары" }
 ];
 
 let activeCategory = "all";
@@ -629,14 +629,23 @@ let activeSize = "all";
 let activeSearch = "";
 
 /* ---------- ФИЛЬТРЫ ---------- */
+function parseProductSizes(sizeStr) {
+  return String(sizeStr || "")
+    .split(/[,;/]+/)
+    .map(s => s.trim())
+    .filter(Boolean);
+}
+
 function getUsedSizes() {
-  return [...new Set(PRODUCTS.map(p => p.size).filter(Boolean))].sort((a,b) => {
-     let numA = parseFloat(a.replace(',', '.'));
-     let numB = parseFloat(b.replace(',', '.'));
-     if (!isNaN(numA) && !isNaN(numB)) return numA - numB;
-     return a.localeCompare(b);
+  const allSizes = PRODUCTS.flatMap(p => parseProductSizes(p.size));
+  return [...new Set(allSizes)].sort((a, b) => {
+    let numA = parseFloat(a.replace(',', '.'));
+    let numB = parseFloat(b.replace(',', '.'));
+    if (!isNaN(numA) && !isNaN(numB)) return numA - numB;
+    return a.localeCompare(b);
   });
 }
+
 function getUsedCategories() {
   const used = new Set(PRODUCTS.map(p => p.category));
   return CATEGORIES.filter(c => c.key === 'all' || used.has(c.key));
@@ -644,19 +653,25 @@ function getUsedCategories() {
 
 function renderFilters() {
   const cats = getUsedCategories();
-  if (activeCategory !== 'all' && !cats.some(c => c.key === activeCategory)) activeCategory = 'all';
+  if (activeCategory !== 'all' && !cats.some(c => c.key === activeCategory)) {
+    activeCategory = 'all';
+  }
   document.getElementById("categoryFilters").innerHTML = cats.map(c =>
     `<button class="chip ${activeCategory === c.key ? 'active' : ''}" onclick="setCategory('${c.key}')">${c.label}</button>`
   ).join("");
 
   const sizes = getUsedSizes();
+  if (activeSize !== 'all' && !sizes.includes(activeSize)) {
+    activeSize = 'all';
+  }
   document.getElementById("sizeFilters").innerHTML =
-    `<button class="chip ${activeSize === 'all' ? 'active' : ''}" onclick="setSize('all')">Все размеры</button>` +
+    `<button class="chip ${activeSize === 'all' ? 'active' : ''}" onclick="setSize('all')">Все</button>` +
     sizes.map(s => `<button class="chip ${activeSize === s ? 'active' : ''}" onclick="setSize('${s}')">${s}</button>`).join("");
 }
+
 function setCategory(key) { activeCategory = key; renderFilters(); renderGrid(); haptic(); }
 function setSize(size) { activeSize = size; renderFilters(); renderGrid(); haptic(); }
-function setSearch(val) { activeSearch = val; renderGrid(); }
+function setSearch(val) { activeSearch = val.trim().toLowerCase(); renderGrid(); }
 
 /* ---------- ФОРМАТ ЦЕНЫ ---------- */
 function formatPrice(p) {
@@ -673,14 +688,14 @@ function createProductCard(p) {
   return `
     <div class="card">
       <div class="fav-btn ${isFav ? 'active' : ''}" onclick="toggleFavorite(event, ${p.id})">
-        <svg viewBox="0 0 24 24"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"></path></svg>
+        <svg viewBox="0 0 24 24"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>
       </div>
       <div class="card-img" onclick="openProduct(${p.id})">
         <img src="${p.image}" loading="lazy" alt="${p.name}">
       </div>
       <div class="card-body">
         <div class="card-title" onclick="openProduct(${p.id})">${p.name}</div>
-        <div class="card-meta">${p.size || ''} ${p.condition ? '· '+p.condition : ''}</div>
+        <div class="card-meta">${p.size} · ${p.condition || ''}</div>
         <div class="card-price-multi">${formatPrice(p)}</div>
         <button class="add-btn ${inCart ? 'added' : ''}" onclick="addToCart(${p.id})">
           ${inCart ? "✓ В корзине" : "В корзину"}
@@ -693,15 +708,18 @@ function createProductCard(p) {
 function renderGrid() {
   const filtered = PRODUCTS.filter(p => {
     const matchCat = activeCategory === "all" || p.category === activeCategory;
-    const matchSize = activeSize === "all" || p.size === activeSize;
-    const matchSearch = (p.brand || "").toLowerCase().includes(activeSearch.toLowerCase())
-                     || (p.name || "").toLowerCase().includes(activeSearch.toLowerCase());
+    const itemSizes = parseProductSizes(p.size);
+    const matchSize = activeSize === "all" || itemSizes.includes(activeSize);
+    const matchSearch = (p.brand || "").toLowerCase().includes(activeSearch)
+                     || (p.name || "").toLowerCase().includes(activeSearch);
     return matchCat && matchSize && matchSearch;
   });
-  document.getElementById("resultCount").textContent = filtered.length ? `${filtered.length} шт.` : '';
-  document.getElementById("productGrid").innerHTML =
-    filtered.map(createProductCard).join("") || `<div class="empty">Ничего не найдено</div>`;
+  document.getElementById("resultCount").textContent = `Показано: ${filtered.length}`;
+  document.getElementById("productGrid").innerHTML = filtered.length
+    ? filtered.map(createProductCard).join("")
+    : `<div class="empty">Ничего не найдено</div>`;
 }
+
 
 function renderFavorites() {
   const items = favorites.map(id => PRODUCTS.find(p => p.id === id)).filter(Boolean);
