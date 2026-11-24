@@ -6,6 +6,7 @@
 <meta name="theme-color" content="#ffffff" id="themeColorMeta">
 <title>KHARLANOV.STORE</title>
 <script src="https://telegram.org/js/telegram-web-app.js"></script>
+<script src="https://unpkg.com/@supabase/supabase-js@2"></script>
 <style>
   :root {
     --bg: #ffffff; --surface: #f4f4f4; --surface-2: #e5e5e5; --border: #d4d4d4;
@@ -520,52 +521,85 @@ if (tg) {
   });
 }
 
-/* ---------- ADMIN ACCESS ---------- */
+/* ---------- SUPABASE & ЗАЩИЩЁННЫЙ АДМИН-ДОСТУП ---------- */
+const SUPABASE_URL = 'https://supabase.co';
+const SUPABASE_KEY = 'sb_publishable_3-H-tfy6iy8uKa-T11Aatg_qcdNl6Cw';
+const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+let currentAdminSession = null;
+
 function isAdmin() {
-  if (tgUser.id && ADMIN_IDS.includes(tgUser.id)) return true;
-  return localStorage.getItem('kharlanov_admin') === 'true';
+  return Boolean(currentAdminSession);
 }
 
 function openAdminLogin() {
-  document.getElementById('adminPasswordInput').value = '';
+  const pwInput = document.getElementById('adminPasswordInput');
+  if (pwInput && !document.getElementById('adminEmailInput')) {
+    const emailInput = document.createElement('input');
+    emailInput.type = 'email';
+    emailInput.id = 'adminEmailInput';
+    emailInput.className = pwInput.className || 'form-input';
+    emailInput.placeholder = 'Email администратора';
+    emailInput.style.marginBottom = '0.75rem';
+    pwInput.parentNode.insertBefore(emailInput, pwInput);
+  }
+  if (pwInput) pwInput.value = '';
   document.getElementById('adminLoginModal').classList.add('open');
   document.body.style.overflow = "hidden";
 }
+
 function closeAdminLogin() {
   document.getElementById('adminLoginModal').classList.remove('open');
   document.body.style.overflow = "";
 }
-function checkAdminPassword() {
-  const pw = document.getElementById('adminPasswordInput').value;
-  if (pw === ADMIN_PASSWORD) {
-    localStorage.setItem('kharlanov_admin', 'true');
-    closeAdminLogin();
-    showToast("Доступ получен!");
-    setTimeout(() => location.reload(), 500);
-  } else {
+
+async function checkAdminPassword() {
+  const email = (document.getElementById('adminEmailInput')?.value || '').trim();
+  const password = document.getElementById('adminPasswordInput')?.value || '';
+
+  if (!email || !password) {
+    showToast("Введите Email и пароль");
+    return;
+  }
+
+  const { data, error } = await sb.auth.signInWithPassword({ email, password });
+
+  if (error || !data.session) {
     haptic('heavy');
-    showToast("Неверный пароль");
-    document.getElementById('adminPasswordInput').style.borderColor = 'var(--danger)';
-    setTimeout(() => document.getElementById('adminPasswordInput').style.borderColor = '', 1000);
+    showToast("Неверный логин или пароль");
+    return;
+  }
+
+  currentAdminSession = data.session;
+  closeAdminLogin();
+  showToast("Вход выполнен!");
+  document.getElementById('navAdmin').style.display = 'flex';
+  renderAdminEntry();
+}
+
+async function logoutAdmin() {
+  await sb.auth.signOut();
+  currentAdminSession = null;
+  showToast("Вы вышли из админки");
+  setTimeout(() => location.reload(), 400);
+}
+
+/* ---------- ПРОДУКТЫ (ОБЛАЧНОЕ ХРАНЕНИЕ) ---------- */
+const DEFAULT_PRODUCTS = [];
+let PRODUCTS = [];
+
+async function loadProductsFromCloud() {
+  const { data, error } = await sb
+    .from('products')
+    .select('*')
+    .order('id', { ascending: false });
+
+  if (!error && data) {
+    PRODUCTS = data;
+    refreshAll();
   }
 }
-function logoutAdmin() {
-  localStorage.removeItem('kharlanov_admin');
-  showToast("Вы вышли из админки");
-  setTimeout(() => location.reload(), 500);
-}
 
-/* ---------- ПРОДУКТЫ (ХРАНЕНИЕ) ---------- */
-const DEFAULT_PRODUCTS = [
-
-];
-
-let PRODUCTS = (() => {
-  try {
-    const stored = JSON.parse(localStorage.getItem('kharlanov_products') || 'null');
-    return Array.isArray(stored) && stored.length ? stored : JSON.parse(JSON.stringify(DEFAULT_PRODUCTS));
-  } catch(e) { return JSON.parse(JSON.stringify(DEFAULT_PRODUCTS)); }
-})();
 
 /* ---------- КОРЗИНА / ИЗБРАННОЕ ---------- */
 function migrateToIds(key) {
@@ -1112,7 +1146,7 @@ function parseTemplate() {
   haptic('medium');
 }
 
-function saveProduct() {
+async function saveProduct() {
   const idVal = document.getElementById('formProductId').value;
   const name = document.getElementById('formName').value.trim();
   const brand = document.getElementById('formBrand').value.trim();
@@ -1130,7 +1164,6 @@ function saveProduct() {
     return;
   }
 
-  // Собираем картинки: сначала загруженные с телефона (Base64), потом URL
   let images = [...currentUploadedImages];
   if (textImages) {
     const urls = textImages.split('\n').map(s => s.trim()).filter(Boolean);
@@ -1142,51 +1175,50 @@ function saveProduct() {
     return;
   }
 
-  const data = {
+  const payload = {
     name, brand, category, size, condition,
     price: priceRub, priceByn, priceUsd,
     image: images[0], images, desc
   };
 
+  showToast("Сохранение в облако...");
+
+  let res;
   if (idVal) {
-    const idx = PRODUCTS.findIndex(p => p.id === Number(idVal));
-    if (idx > -1) PRODUCTS[idx] = { ...PRODUCTS[idx], ...data };
-    showToast("Товар обновлён");
+    res = await sb.from('products').update(payload).eq('id', Number(idVal));
   } else {
-    const newId = Math.max(0, ...PRODUCTS.map(p => p.id)) + 1;
-    PRODUCTS.push({ id: newId, ...data });
-    showToast("Товар добавлен");
+    res = await sb.from('products').insert([payload]);
   }
 
-  try {
-    localStorage.setItem('kharlanov_products', JSON.stringify(PRODUCTS));
-    closeProductForm();
-    refreshAll();
-    haptic('medium');
-  } catch (e) {
-    showToast("Ошибка: память заполнена. Удалите старые фото или уменьшите размер.");
+  if (res.error) {
+    showToast("Ошибка доступа: войдите в админку заново");
+    return;
   }
+
+  showToast(idVal ? "Товар обновлён" : "Товар добавлен");
+  closeProductForm();
+  await loadProductsFromCloud();
+  haptic('medium');
 }
 
-function deleteProduct(id) {
-  if (!confirm("Удалить товар?")) return;
-  PRODUCTS = PRODUCTS.filter(p => p.id !== id);
+async function deleteProduct(id) {
+  if (!confirm("Удалить товар из каталога?")) return;
+  const { error } = await sb.from('products').delete().eq('id', id);
+  if (error) {
+    showToast("Ошибка удаления: проверьте права админа");
+    return;
+  }
   cart = cart.filter(cid => cid !== id);
   favorites = favorites.filter(fid => fid !== id);
-  localStorage.setItem('kharlanov_products', JSON.stringify(PRODUCTS));
   localStorage.setItem('kharlanov_cart', JSON.stringify(cart));
   localStorage.setItem('kharlanov_favs', JSON.stringify(favorites));
-  showToast("Удалено");
-  refreshAll();
+  showToast("Товар удалён");
+  await loadProductsFromCloud();
   haptic('heavy');
 }
 
-function resetProducts() {
-  if (!confirm("Сбросить каталог к стандартному? Все изменения будут потеряны.")) return;
-  PRODUCTS = JSON.parse(JSON.stringify(DEFAULT_PRODUCTS));
-  localStorage.setItem('kharlanov_products', JSON.stringify(PRODUCTS));
-  showToast("Сброшено к заводским");
-  refreshAll();
+async function resetProducts() {
+  showToast("Каталог управляется напрямую в облаке");
 }
 
 function refreshAll() {
@@ -1213,7 +1245,10 @@ function renderAdminEntry() {
 }
 
 /* ---------- СТАРТ ---------- */
-(function init() {
+(async function init() {
+  const { data: { session } } = await sb.auth.getSession();
+  currentAdminSession = session;
+
   if (isAdmin()) {
     document.getElementById('navAdmin').style.display = 'flex';
   }
@@ -1230,7 +1265,9 @@ function renderAdminEntry() {
   }
 
   refreshAll();
+  await loadProductsFromCloud();
 })();
+
 </script>
 </body>
 </html>
