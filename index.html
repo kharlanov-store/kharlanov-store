@@ -1191,7 +1191,7 @@ async function saveProduct() {
   }
 
   if (res.error) {
-    showToast("Ошибка доступа: войдите в админку заново");
+    alert("Ошибка базы: " + res.error.message);
     return;
   }
 
