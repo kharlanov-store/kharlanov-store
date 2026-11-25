@@ -333,6 +333,17 @@
     <button class="chip active" onclick="openProductForm()">+ Товар</button>
   </div>
   <div class="page-container">
+      <div id="adminStatsBox" style="display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-bottom:16px;">
+      <div style="background:var(--surface); border:1px solid var(--border); border-radius:0.75rem; padding:12px; text-align:center;">
+        <div style="font-size:12px; color:var(--muted); margin-bottom:4px;">Уникальных сегодня</div>
+        <div id="statToday" style="font-size:20px; font-weight:700;">—</div>
+      </div>
+      <div style="background:var(--surface); border:1px solid var(--border); border-radius:0.75rem; padding:12px; text-align:center;">
+        <div style="font-size:12px; color:var(--muted); margin-bottom:4px;">Всего уникальных</div>
+        <div id="statTotal" style="font-size:20px; font-weight:700;">—</div>
+      </div>
+    </div>
+    
     <div id="adminList"></div>
     <button class="checkout-btn danger-btn" style="margin-top: 1.5rem;" onclick="resetProducts()">Сбросить к заводским</button>
     <button class="checkout-btn" style="margin-top: 0.8rem; background: var(--surface); color: var(--text); border: 1px solid var(--border);" onclick="logoutAdmin()">Выйти из админ-режима</button>
@@ -569,6 +580,7 @@ async function checkAdminPassword() {
   showToast("Вход выполнен!");
   document.getElementById('navAdmin').style.display = 'flex';
   renderAdminEntry();
+  loadVisitStats();
 }
 
 async function logoutAdmin() {
@@ -576,6 +588,38 @@ async function logoutAdmin() {
   currentAdminSession = null;
   showToast("Вы вышли из админки");
   setTimeout(() => location.reload(), 400);
+}
+/* ---------- СТАТИСТИКА ПОСЕЩЕНИЙ ---------- */
+async function trackSiteVisit() {
+  if (isAdmin()) return; // ваши заходы как админа не накручивают счётчик
+  const today = new Date().toISOString().slice(0, 10);
+  if (localStorage.getItem('ks_visited_day') === today) return;
+
+  let vid = localStorage.getItem('ks_visitor_id');
+  if (!vid) {
+    vid = (window.Telegram?.WebApp?.initDataUnsafe?.user?.id)
+      ? String(window.Telegram.WebApp.initDataUnsafe.user.id)
+      : ('guest_' + Math.random().toString(36).slice(2, 10));
+    localStorage.setItem('ks_visitor_id', vid);
+  }
+
+  const { error } = await sb.from('site_visits').insert([{ visitor_id: vid, visit_date: today }]);
+  if (!error) localStorage.setItem('ks_visited_day', today);
+}
+
+async function loadVisitStats() {
+  if (!isAdmin()) return;
+  const { data, error } = await sb.from('site_visits').select('visitor_id, visit_date');
+  if (error || !data) return;
+
+  const today = new Date().toISOString().slice(0, 10);
+  const todayUnique = new Set(data.filter(r => r.visit_date === today).map(r => r.visitor_id)).size;
+  const totalUnique = new Set(data.map(r => r.visitor_id)).size;
+
+  const elToday = document.getElementById('statToday');
+  const elTotal = document.getElementById('statTotal');
+  if (elToday) elToday.textContent = todayUnique;
+  if (elTotal) elTotal.textContent = totalUnique;
 }
 
 /* ---------- ПРОДУКТЫ (ОБЛАЧНОЕ ХРАНЕНИЕ) ---------- */
@@ -1332,6 +1376,8 @@ function renderAdminEntry() {
 
   refreshAll();
   await loadProductsFromCloud();
+    trackSiteVisit();
+  loadVisitStats();
 })();
 
 </script>
