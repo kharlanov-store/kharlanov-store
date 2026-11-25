@@ -278,7 +278,7 @@
         Вы можете забрать заказ самостоятельно в г. Минск. Точный адрес и время работы сообщит наш менеджер после оформления заявки в Telegram.
       </div>
     </div>
-
+<div id="recipientFields">
     <div class="form-section-title">Данные получателя</div>
     <div class="form-group"><input type="text" class="form-input" id="formLastName" placeholder="Фамилия *"></div>
     <div class="form-group"><input type="text" class="form-input" id="formFirstName" placeholder="Имя *"></div>
@@ -289,6 +289,7 @@
       <div class="form-group"><input type="text" class="form-input" id="formZip" placeholder="Почтовый индекс *"></div>
       <div class="form-group"><input type="text" class="form-input" id="formAddress" placeholder="Адрес (Город, Улица, Дом, Кв) *"></div>
     </div>
+</div>
 
     <div class="form-section-title" style="margin-top: 1.5rem;">Ваш заказ</div>
     <div class="order-summary" id="checkoutSummary"></div>
@@ -873,18 +874,24 @@ let currentCheckoutType = 'delivery';
 
 function setCheckoutType(type) {
   currentCheckoutType = type;
-  const btnDelivery = document.getElementById('btn-delivery');
-  const btnPickup = document.getElementById('btn-pickup');
+  const btnDelivery = document.getElementById('btnTypeDelivery');
+  const btnPickup = document.getElementById('btnTypePickup');
   const secDelivery = document.getElementById('deliveryMethodsSection');
   const secPickup = document.getElementById('pickupInfoSection');
-  const secAddress = document.getElementById('addressFields');
+  const secRecipient = document.getElementById('recipientFields');
 
   if (type === 'delivery') {
-    btnDelivery.classList.add('active'); btnPickup.classList.remove('active');
-    secDelivery.style.display = 'block'; secPickup.style.display = 'none'; secAddress.style.display = 'block';
+    if (btnDelivery) btnDelivery.classList.add('active');
+    if (btnPickup) btnPickup.classList.remove('active');
+    if (secDelivery) secDelivery.style.display = 'block';
+    if (secPickup) secPickup.style.display = 'none';
+    if (secRecipient) secRecipient.style.display = 'block';
   } else {
-    btnPickup.classList.add('active'); btnDelivery.classList.remove('active');
-    secDelivery.style.display = 'none'; secPickup.style.display = 'block'; secAddress.style.display = 'none';
+    if (btnPickup) btnPickup.classList.add('active');
+    if (btnDelivery) btnDelivery.classList.remove('active');
+    if (secDelivery) secDelivery.style.display = 'none';
+    if (secPickup) secPickup.style.display = 'block';
+    if (secRecipient) secRecipient.style.display = 'none';
   }
   renderCheckoutSummary();
 }
