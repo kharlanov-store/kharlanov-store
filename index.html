@@ -1384,6 +1384,47 @@ function renderAdminEntry() {
     trackSiteVisit();
   loadVisitStats();
 })();
+  
+/* ---------- ПЛАВНАЯ РАБОТА КЛАВИАТУРЫ И НИЖНЕЙ ПАНЕЛИ НА IOS ---------- */
+(function initMobileKeyboardFix() {
+  const navBar = document.getElementById('navAdmin')?.parentElement;
+
+  function setKeyboardState(isOpen) {
+    if (!navBar) return;
+    navBar.style.transition = 'transform 0.2s ease, opacity 0.2s ease';
+    navBar.style.transform = isOpen ? 'translateY(120%)' : 'translateY(0)';
+    navBar.style.opacity = isOpen ? '0' : '1';
+    navBar.style.pointerEvents = isOpen ? 'none' : 'auto';
+  }
+
+  // Сворачиваем клавиатуру при нажатии на свободное место экрана
+  document.addEventListener('touchstart', (e) => {
+    const active = document.activeElement;
+    if (active && active.matches('input, textarea, select') && !e.target.closest('input, textarea, select, button, label')) {
+      active.blur();
+    }
+  }, { passive: true });
+
+  // Сворачиваем клавиатуру при прокрутке страницы
+  window.addEventListener('touchmove', () => {
+    const active = document.activeElement;
+    if (active && active.matches('input, textarea, select')) {
+      active.blur();
+    }
+  }, { passive: true });
+
+  document.addEventListener('focusin', (e) => {
+    if (e.target.matches('input, textarea, select')) setKeyboardState(true);
+  });
+
+  document.addEventListener('focusout', () => {
+    setTimeout(() => {
+      if (!document.activeElement?.matches('input, textarea, select')) {
+        setKeyboardState(false);
+      }
+    }, 120);
+  });
+})();
 
 </script>
 </body>
