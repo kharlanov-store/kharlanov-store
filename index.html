@@ -197,10 +197,6 @@
 </head>
 <body>
 
-<div class="marquee">
-  <span>АРХИВНЫЙ СТРИТВИР · ТОЛЬКО ОРИГИНАЛ · ДОСТАВКА ПО ВСЕМУ МИРУ · 500+ ОТЗЫВОВ · </span>
-</div>
-
 <header>
   <div class="logo-container">
     <div class="logo">KHARLANOV.STORE</div>
@@ -254,33 +250,30 @@
       <button class="toggle-btn active" id="btn-delivery" onclick="setCheckoutType('delivery')">Доставка</button>
       <button class="toggle-btn" id="btn-pickup" onclick="setCheckoutType('pickup')">Самовывоз</button>
     </div>
-
-    <div id="deliveryMethodsSection">
+           <div id="deliveryMethodsSection">
       <div class="form-section-title">Способ доставки</div>
       <div class="delivery-methods">
-        <div class="delivery-card active" data-method="Белпочта" data-cost="6" onclick="selectDeliveryMethod(this)">
-          <div class="delivery-icon">✉️</div>
-          <div class="delivery-info"><h4>Белпочта</h4><p>По всей Беларуси — 6 BYN</p></div>
+        <div class="delivery-card active" data-method="europost" onclick="selectDelivery(this)">
+          <div class="delivery-icon">📦</div>
+          <div class="delivery-info"><h4>Европочта</h4><p>Стоимость доставки уточнит менеджер</p></div>
           <div class="delivery-check">✓</div>
         </div>
-        <div class="delivery-card" data-method="Европочта" data-cost="7" onclick="selectDeliveryMethod(this)">
-          <div class="delivery-icon">📦</div>
-          <div class="delivery-info"><h4>Европочта</h4><p>До отделения — 7 BYN</p></div>
+        <div class="delivery-card" data-method="belpost" onclick="selectDelivery(this)">
+          <div class="delivery-icon">📮</div>
+          <div class="delivery-info"><h4>Белпочта</h4><p>Стоимость доставки уточнит менеджер</p></div>
           <div class="delivery-check"></div>
         </div>
-        <div class="delivery-card" data-method="СДЭК" data-cost="9" onclick="selectDeliveryMethod(this)">
+        <div class="delivery-card" data-method="cdek" onclick="selectDelivery(this)">
           <div class="delivery-icon">🚚</div>
-          <div class="delivery-info"><h4>СДЭК (CDEK)</h4><p>По СНГ — 9 BYN</p></div>
+          <div class="delivery-info"><h4>СДЭК / Почта (РФ и мир)</h4><p>Стоимость доставки уточнит менеджер</p></div>
           <div class="delivery-check"></div>
         </div>
       </div>
       <div class="delivery-note">
-        * Итоговая стоимость может меняться в зависимости от веса и габаритов. Указана минимальная цена.
+        * Итоговую стоимость и сроки доставки уточнит менеджер после оформления заказа.
       </div>
     </div>
 
-    <div id="pickupInfoSection" style="display: none;">
-      <div class="form-section-title">Самовывоз</div>
       <div class="pickup-info-card">
         Вы можете забрать заказ самостоятельно в г. Минск. Точный адрес и время работы сообщит наш менеджер после оформления заявки в Telegram.
       </div>
@@ -628,22 +621,46 @@ let activeCategory = "all";
 let activeSize = "all";
 let activeSearch = "";
 
-/* ---------- ФИЛЬТРЫ ---------- */
+const LETTER_ORDER = ['XXS', 'XS', 'S', 'M', 'L', 'XL', 'XXL', '2XL', '3XL', '4XL', 'OS', 'ONE SIZE'];
+
+function normalizeSizeToken(raw) {
+  let s = String(raw || '').trim().toUpperCase();
+  s = s.replace(/\(.*?\)/g, '').trim();
+  s = s.replace('⅔', '.5').replace('⅓', '.5').replace('½', '.5').replace(',', '.');
+  return s;
+}
+
 function parseProductSizes(sizeStr) {
   return String(sizeStr || "")
-    .split(/[,;/]+/)
-    .map(s => s.trim())
+    .split(/[,;/\-–—]+/)
+    .map(normalizeSizeToken)
     .filter(Boolean);
 }
 
-function getUsedSizes() {
-  const allSizes = PRODUCTS.flatMap(p => parseProductSizes(p.size));
-  return [...new Set(allSizes)].sort((a, b) => {
-    let numA = parseFloat(a.replace(',', '.'));
-    let numB = parseFloat(b.replace(',', '.'));
-    if (!isNaN(numA) && !isNaN(numB)) return numA - numB;
+function getSplitSizes() {
+  const all = [...new Set(PRODUCTS.flatMap(p => parseProductSizes(p.size)))];
+  const numeric = [];
+  const letter = [];
+
+  for (const s of all) {
+    if (!isNaN(parseFloat(s)) && isFinite(Number(s))) {
+      numeric.push(s);
+    } else {
+      letter.push(s);
+    }
+  }
+
+  numeric.sort((a, b) => parseFloat(a) - parseFloat(b));
+  letter.sort((a, b) => {
+    const idxA = LETTER_ORDER.indexOf(a);
+    const idxB = LETTER_ORDER.indexOf(b);
+    if (idxA !== -1 && idxB !== -1) return idxA - idxB;
+    if (idxA !== -1) return -1;
+    if (idxB !== -1) return 1;
     return a.localeCompare(b);
   });
+
+  return { numeric, letter, all: [...numeric, ...letter] };
 }
 
 function getUsedCategories() {
@@ -660,13 +677,25 @@ function renderFilters() {
     `<button class="chip ${activeCategory === c.key ? 'active' : ''}" onclick="setCategory('${c.key}')">${c.label}</button>`
   ).join("");
 
-  const sizes = getUsedSizes();
-  if (activeSize !== 'all' && !sizes.includes(activeSize)) {
+  const { numeric, letter, all } = getSplitSizes();
+  if (activeSize !== 'all' && !all.includes(activeSize)) {
     activeSize = 'all';
   }
-  document.getElementById("sizeFilters").innerHTML =
-    `<button class="chip ${activeSize === 'all' ? 'active' : ''}" onclick="setSize('all')">Все</button>` +
-    sizes.map(s => `<button class="chip ${activeSize === s ? 'active' : ''}" onclick="setSize('${s}')">${s}</button>`).join("");
+
+  const numRow = `<div style="display:flex; gap:6px; overflow-x:auto; padding-bottom:6px;">
+    <button class="chip ${activeSize === 'all' ? 'active' : ''}" onclick="setSize('all')">Все</button>
+    ${numeric.map(s => `<button class="chip ${activeSize === s ? 'active' : ''}" onclick="setSize('${s}')">${s}</button>`).join("")}
+  </div>`;
+
+  const letRow = letter.length
+    ? `<div style="display:flex; gap:6px; overflow-x:auto; padding-top:2px;">
+        ${letter.map(s => `<button class="chip ${activeSize === s ? 'active' : ''}" onclick="setSize('${s}')">${s}</button>`).join("")}
+       </div>`
+    : '';
+
+  const sizeBox = document.getElementById("sizeFilters");
+  sizeBox.style.display = "block";
+  sizeBox.innerHTML = numRow + letRow;
 }
 
 function setCategory(key) { activeCategory = key; renderFilters(); renderGrid(); haptic(); }
@@ -822,10 +851,10 @@ function selectDeliveryMethod(el) {
 }
 
 function getDeliveryCost() {
-  if (currentCheckoutType === 'pickup') return 0;
-  const active = document.querySelector('.delivery-card.active');
-  return Number(active?.dataset.cost) || 6;
+  return 0;
 }
+
+  
 function getDeliveryMethodName() {
   if (currentCheckoutType === 'pickup') return 'Самовывоз';
   return document.querySelector('.delivery-card.active')?.dataset.method || 'Белпочта';
