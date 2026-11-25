@@ -849,6 +849,10 @@ function selectDeliveryMethod(el) {
   el.querySelector('.delivery-check').innerHTML = '✓';
   renderCheckoutSummary();
 }
+  
+function selectDelivery(el) {
+  selectDeliveryMethod(el);
+}
 
 function getDeliveryCost() {
   return 0;
